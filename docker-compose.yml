@@ -1,0 +1,26 @@
+services:
+  order-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${ORDER_DB_NAME}
+    ports:
+      - "${ORDER_DB_PORT}:5432"
+
+  payment-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${PAYMENT_DB_NAME}
+    ports:
+      - "${PAYMENT_DB_PORT}:5432"
+
+  payment-service:
+    build: ./payment
+    environment:
+      - PORT=${PAYMENT_GRPC_PORT}
+      - DB_URL=postgres://${DB_USER}:${DB_PASSWORD}@payment-db:5432/${PAYMENT_DB_NAME}?sslmode=disable
+    ports:
+      - "${PAYMENT_GRPC_PORT}:${PAYMENT_GRPC_PORT}"
