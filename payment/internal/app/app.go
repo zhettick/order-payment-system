@@ -10,10 +10,8 @@ import (
 
 	"payment/internal/repository/postgres"
 	"payment/internal/transport/grpc"
-	"payment/internal/transport/http"
 	"payment/internal/usecase"
 
-	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 	svc "github.com/zhettick/order-payment-gen/payment/v1/service"
 	googlegrpc "google.golang.org/grpc"
@@ -22,13 +20,9 @@ import (
 func Run() {
 	dbURL := os.Getenv("PAYMENT_DB_URL")
 	grpcPort := os.Getenv("PAYMENT_GRPC_PORT")
-	httpPort := os.Getenv("PAYMENT_HTTP_PORT")
 
 	if grpcPort == "" {
 		grpcPort = "50051"
-	}
-	if httpPort == "" {
-		httpPort = "8081"
 	}
 
 	db, err := sql.Open("postgres", dbURL)
@@ -65,12 +59,5 @@ func Run() {
 		}
 	}()
 
-	r := gin.Default()
-	paymentHandler := http.NewPaymentHandler(paymentUC)
-	http.SetupRoutes(r, paymentHandler)
-
-	log.Printf("Payment HTTP Server running on port %s", httpPort)
-	if err := r.Run(":" + httpPort); err != nil {
-		log.Fatalf("Payment HTTP server failed: %v", err)
-	}
+	select {}
 }
