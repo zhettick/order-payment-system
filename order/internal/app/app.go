@@ -18,6 +18,7 @@ import (
 	svc "github.com/zhettick/order-payment-gen/order/v1/service"
 	paymentSvc "github.com/zhettick/order-payment-gen/payment/v1/service"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func Run() {
@@ -32,6 +33,9 @@ func Run() {
 	if grpcPort == "" {
 		grpcPort = "50052"
 	}
+	if paymentAddr == "" {
+		paymentAddr = "localhost:50051"
+	}
 
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
@@ -39,7 +43,7 @@ func Run() {
 	}
 	defer db.Close()
 
-	conn, err := grpc.Dial(paymentAddr, grpc.WithInsecure())
+	conn, err := grpc.Dial(paymentAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("failed to connect payment grpc: %v", err)
 	}
