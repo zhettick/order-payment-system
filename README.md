@@ -1,20 +1,35 @@
 ## Architecture Overview
-The project consists of two independent microservices: **Order Service** and **Payment Service**. Both services are built following **Clean Architecture** principles to ensure separation of concerns and maintainability.
+The project consists of two independent microservices: **Order Service** and **Payment Service**. The core evolution in this version is the migration from **weak REST** contracts to **Strongly Typed gRPC contracts** and **Contract-First Development**.
 
 ### Architecture Diagram
-![img.png](screenshots/img.png)
+![diagram.png](screenshots/diagram.png)
 
 ### Service Decomposition
-- **Order Service:** Manages the lifecycle of customer orders. It creates orders and communicates with the Payment Service to process payments.
-- **Payment Service:** Responsible for processing payments and validating transaction limits. It returns the result of payment authorization.
+- **Order Service:**
+  - Handles order lifecycle (create, get, cancel)
+  - Exposes REST API for external clients
+  - Acts as a gRPC client when calling Payment Service
+  - Acts as a gRPC server for streaming order updates
+- **Payment Service:** 
+  - Processes payments and validates limits
+  - Exposes gRPC server
+  - Implements business rules for authorization/decline
+  - Includes gRPC interceptor (logging middleware)
 
 ### Bounded Contexts
-The system is divided into two independent bounded contexts:
+The system follows Domain-Driven Design with two independent contexts:
+1. Order Context 
+   - order creation
+   - status management
+   - streaming updates
+2. Payment Context
+   - payment processing
+   - transaction validation
 
-- **Order Context:** handles order creation, retrieval, and cancellation
-- **Payment Context:** handles payment authorization and validation
-
-Each service owns its own domain, data, and logic. There is no direct database access between services.
+Each service:
+- owns its own database
+- contains its own business logic
+- does NOT share internal code
 
 ### Clean Architecture Layers
 Each service follows a layered architecture:
@@ -25,41 +40,63 @@ Each service follows a layered architecture:
      - applying payment rules
 3.  **Repository:** Responsible for data persistence using PostgreSQL.
 4.  **Transport (HTTP):** 
-    - parse requests
-    - call use cases
-    - return responses using DTOs
+    - HTTP(Gin) → external API (Order Service only)
+    - gRPC → Payment Service → gRPC Server; Order Service → gRPC Client + Streaming Server 
 5.  **Migrations:** SQL scripts for database schema management.
 
 ### Inter-Service Communication
-The Order Service communicates with the Payment Service using REST.
-1.  Order is created with status **"Pending"**
-2.  Order Service calls Payment Service
-3.  Payment Service returns:
-    - "Authorized" → Order becomes **"Paid"**
-    - "Declined" → Order becomes **"Failed"**
+1.	Client sends POST /orders
+2.	Order Service creates order with **"Pending"**
+3.	Order Service calls Payment Service via gRPC
+4.	Payment Service processes payment:
+   - Authorized → Order becomes **"Paid"** 
+   - Declined → Order becomes **"Failed"*
 
+### Contract-First Development
+The system follows Contract-First design:
+- .proto files define:
+  - services
+  - messages
+  - enums
+- Generated Go code (pb.go) is used by both services
+
+Structure:
+- Repository A (Protos):
+  - contains .proto definitions
+- Repository B (Generated Code):
+  - contains generated .pb.go
+  - used via: ```go get github.com/zhettick/order-payment-gen```
+  
 ### Resilience and Failure Handling
-To ensure system stability:
-- A custom HTTP client with a timeout (max 2 seconds) is used
-- The system avoids blocking calls
+- gRPC client uses timeout (2 seconds)
+- Failure scenario:
+  - Payment Service unavailable → Order marked as **"Failed"**
+  - HTTP returns **503 Service Unavailable**
 
-Failure scenario:
-- If Payment Service is unavailable:
-    - Request times out
-    - Order Service returns **503 Service Unavailable**
-    - Order is marked as **"Failed"** (design choice)
+To handle errors the system uses:
+- google.golang.org/grpc/status
+- codes.*
+
+Examples:
+- codes.InvalidArgument
+- codes.NotFound
+- codes.Internal
 
 ### Architecture Decisions
-1. **No Shared Code Between Services**  
-   Prevents the "Distributed Monolith" problem. Each service owns its own models and logic.
-2. **Database per Service**  
-   Each service has its own database (or schema), ensuring loose coupling and fault isolation.
-3. **Layered Architecture**  
+1. **Contract-First Approach**  
+   The system uses .proto files to define all service contracts before implementation. This ensures strong typing and prevents breaking changes between services.
+2. **gRPC instead of REST(Internal Communication)**  
+   Internal service communication uses gRPC instead of REST for better performance and strict schema enforcement. It also enables efficient binary communication over HTTP/2.
+3. **Database per Service**  
+   Each microservice has its own database, ensuring complete data ownership. This improves isolation and allows services to scale independently.
+4. **No Shared Domain Models**  
+   Services do not share domain models to avoid tight coupling. All communication happens through generated gRPC contracts instead of shared code.
+5. **Streaming via Channels**  
+   Order updates are delivered in real-time using gRPC streaming combined with Go channels. This enables event-driven, immediate status updates.
+6. **Manual Dependency Injection**  
+   All dependencies are manually wired in main.go, which acts as the composition root. This keeps architecture explicit and easy to test.
+7. **Layer Architecture**  
    Clear separation of responsibilities improves maintainability and testability.
-4. **Use of DTOs in HTTP Layer**  
-   Prevents leakage of domain models and decouples internal logic from external API.
-5. **Manual Dependency Injection (Composition Root)**  
-   All dependencies are wired manually in `main.go`, following Clean Architecture principles.
 ---
 
 ## How to Run
@@ -69,9 +106,8 @@ Ensure you have Docker installed and run:
 ```bash
 docker-compose up -d
 ```
-*This will start two PostgreSQL instances on ports 5431 and 5433.*
 
-### 2. Run Services
+### 2. Run Services (if not using Docker for app)
 Open two terminal tabs:
 
 **Payment Service:**
@@ -88,9 +124,9 @@ go run cmd/order/main.go
 
 ---
 
-## API Examples (Postman)
+## Testing the System
 
-### Create Order (Success)
+### Create Order (REST → triggers gRPC)
 `POST http://localhost:8080/orders`
 ```json
 {
@@ -120,18 +156,9 @@ go run cmd/order/main.go
 `PATCH http://localhost:8080/orders/{id}/cancel`
 ![cancelOrderF.png](screenshots/cancelOrderF.png)
 
-### Create Payment
-`POST http://localhost:8081/payments`
-```json
-{
-    "order_id": "2875bbe2-1831-4b32-aef7-9c5e3b384640",
-    "amount": 50000
-}
-```
+### Streaming Test (gRPC)
+Using Evans CLI: `evans -r repl`
+Call: `SubscribeToOrderUpdates`
 ![createPayment.png](screenshots/createPayment.png)
 
-### Get Payment
-`GET http://localhost:8081/payments/{id}`
-![getPayment.png](screenshots/getPayment.png)
----
-
+``````
