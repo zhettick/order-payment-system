@@ -49,6 +49,11 @@ func (u *OrderUseCase) Create(customerID, itemName string, amount int64) (*entit
 
 	status, err := u.paymentClient.Authorize(order.ID, order.Amount)
 	if err != nil {
+		order.Status = entities.StatusFailed
+		if updateErr := u.repo.Update(order); updateErr != nil {
+			return nil, updateErr
+		}
+		u.notifySubscribers(order.ID, order.Status)
 		return nil, errors.New("payment service unavailable")
 	}
 

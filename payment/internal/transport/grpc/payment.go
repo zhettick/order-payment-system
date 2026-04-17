@@ -14,6 +14,8 @@ type Server struct {
 	uc *usecase.PaymentUseCase
 }
 
+var _ svc.PaymentServiceServer = (*Server)(nil)
+
 func NewServer(uc *usecase.PaymentUseCase) *Server {
 	return &Server{
 		uc: uc,

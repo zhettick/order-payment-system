@@ -37,10 +37,19 @@ func (c *PaymentGRPCClient) Authorize(orderID string, amount int64) (string, err
 			log.Printf("Payment service returned gRPC error: %v - %v", st.Code(), st.Message())
 			return entities.StatusFailed, status.Error(st.Code(), "payment service call failed")
 		}
+		return entities.StatusFailed, err
+	}
+
+	if resp == nil || resp.Payment == nil {
+		return entities.StatusFailed, status.Error(codes.Internal, "empty payment response")
 	}
 
 	if resp.Payment.Status == base.PaymentStatus_PAYMENT_STATUS_AUTHORIZED {
 		return entities.StatusPaid, nil
+	}
+
+	if resp.Payment.Status == base.PaymentStatus_PAYMENT_STATUS_DECLINED {
+		return entities.StatusFailed, nil
 	}
 
 	return entities.StatusFailed, status.Error(codes.Internal, "unexpected communication error")
