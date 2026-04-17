@@ -21,6 +21,8 @@ services:
     build:
       context: .
       dockerfile: payment/Dockerfile
+    ports:
+      - "50051:50051"
     environment:
       - PAYMENT_DB_URL=postgres://${DB_USER}:${DB_PASSWORD}@payment-db:5432/${PAYMENT_DB_NAME}?sslmode=disable
       - PAYMENT_GRPC_PORT=${PAYMENT_GRPC_PORT}
@@ -37,6 +39,7 @@ services:
     environment:
       - ORDER_DB_URL=postgres://${DB_USER}:${DB_PASSWORD}@order-db:5432/${ORDER_DB_NAME}?sslmode=disable
       - ORDER_HTTP_PORT=8080
+      - ORDER_GRPC_PORT=${ORDER_GRPC_PORT}
       - PAYMENT_SERVICE_ADDR=payment-service:50051
     depends_on:
       - order-db

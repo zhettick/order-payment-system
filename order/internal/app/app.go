@@ -8,10 +8,9 @@ import (
 
 	"order/internal/repository/postgres"
 	ordergrpc "order/internal/transport/grpc"
+	grpcclient "order/internal/transport/grpc/client"
 	"order/internal/transport/http"
 	"order/internal/usecase"
-
-	grpcclient "order/internal/transport/grpc/client"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
@@ -19,6 +18,7 @@ import (
 	paymentSvc "github.com/zhettick/order-payment-gen/payment/v1/service"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/reflection"
 )
 
 func Run() {
@@ -27,14 +27,17 @@ func Run() {
 	grpcPort := os.Getenv("ORDER_GRPC_PORT")
 	paymentAddr := os.Getenv("PAYMENT_SERVICE_ADDR")
 
+	if dbURL == "" {
+		log.Fatal("ORDER_DB_URL is required")
+	}
 	if httpPort == "" {
-		httpPort = "8080"
+		log.Fatal("ORDER_HTTP_PORT is required")
 	}
 	if grpcPort == "" {
-		grpcPort = "50052"
+		log.Fatal("ORDER_GRPC_PORT is required")
 	}
 	if paymentAddr == "" {
-		paymentAddr = "localhost:50051"
+		log.Fatal("PAYMENT_SERVICE_ADDR is required")
 	}
 
 	db, err := sql.Open("postgres", dbURL)
@@ -50,11 +53,9 @@ func Run() {
 	defer conn.Close()
 
 	paymentGRPC := paymentSvc.NewPaymentServiceClient(conn)
-
 	paymentClient := grpcclient.NewPaymentGRPCClient(paymentGRPC)
 
 	orderRepo := postgres.NewOrderRepository(db)
-
 	orderUC := usecase.NewOrderUseCase(orderRepo, paymentClient)
 
 	go func() {
@@ -65,7 +66,9 @@ func Run() {
 
 		s := grpc.NewServer()
 		orderGRPCServer := ordergrpc.NewServer(orderUC)
+		log.Println("Registering OrderService...")
 		svc.RegisterOrderServiceServer(s, orderGRPCServer)
+		reflection.Register(s)
 
 		log.Printf("gRPC server listening on port %s", grpcPort)
 		if err := s.Serve(lis); err != nil {

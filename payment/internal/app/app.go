@@ -9,20 +9,24 @@ import (
 	"time"
 
 	"payment/internal/repository/postgres"
-	"payment/internal/transport/grpc"
+	grpcserver "payment/internal/transport/grpc"
 	"payment/internal/usecase"
 
 	_ "github.com/lib/pq"
 	svc "github.com/zhettick/order-payment-gen/payment/v1/service"
 	googlegrpc "google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 func Run() {
 	dbURL := os.Getenv("PAYMENT_DB_URL")
 	grpcPort := os.Getenv("PAYMENT_GRPC_PORT")
 
+	if dbURL == "" {
+		log.Fatal("PAYMENT_DB_URL is required")
+	}
 	if grpcPort == "" {
-		grpcPort = "50051"
+		log.Fatal("PAYMENT_GRPC_PORT is required")
 	}
 
 	db, err := sql.Open("postgres", dbURL)
@@ -34,30 +38,33 @@ func Run() {
 	paymentRepo := postgres.NewPaymentRepository(db)
 	paymentUC := usecase.NewPaymentUseCase(paymentRepo)
 
-	go func() {
-		lis, err := net.Listen("tcp", ":"+grpcPort)
-		if err != nil {
-			log.Fatalf("Payment gRPC failed to listen: %v", err)
-		}
+	lis, err := net.Listen("tcp", ":"+grpcPort)
+	if err != nil {
+		log.Fatalf("Payment gRPC failed to listen: %v", err)
+	}
 
-		loggingInterceptor := func(ctx context.Context, req interface{}, info *googlegrpc.UnaryServerInfo, handler googlegrpc.UnaryHandler) (interface{}, error) {
-			start := time.Now()
+	loggingInterceptor := func(
+		ctx context.Context,
+		req interface{},
+		info *googlegrpc.UnaryServerInfo,
+		handler googlegrpc.UnaryHandler,
+	) (interface{}, error) {
+		start := time.Now()
+		resp, err := handler(ctx, req)
+		log.Printf("gRPC Method: %s | Duration: %v | Error: %v", info.FullMethod, time.Since(start), err)
+		return resp, err
+	}
 
-			resp, err := handler(ctx, req)
+	s := googlegrpc.NewServer(
+		googlegrpc.UnaryInterceptor(loggingInterceptor),
+	)
 
-			log.Printf("gRPC Method: %s | Duration: %v | Error: %v", info.FullMethod, time.Since(start), err)
-			return resp, err
-		}
+	reflection.Register(s)
+	paymentGRPCServer := grpcserver.NewServer(paymentUC)
+	svc.RegisterPaymentServiceServer(s, paymentGRPCServer)
 
-		s := googlegrpc.NewServer(googlegrpc.UnaryInterceptor(loggingInterceptor))
-		paymentGRPCServer := grpc.NewServer(paymentUC)
-		svc.RegisterPaymentServiceServer(s, paymentGRPCServer)
-
-		log.Printf("Payment gRPC Server running on port %s", grpcPort)
-		if err := s.Serve(lis); err != nil {
-			log.Fatalf("Payment gRPC failed to serve: %v", err)
-		}
-	}()
-
-	select {}
+	log.Printf("Payment gRPC Server running on port %s", grpcPort)
+	if err := s.Serve(lis); err != nil {
+		log.Fatalf("Payment gRPC failed to serve: %v", err)
+	}
 }
