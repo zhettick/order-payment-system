@@ -4,6 +4,7 @@ import (
 	"context"
 	"payment/internal/usecase"
 
+	"github.com/zhettick/order-payment-gen/payment/v1/base"
 	svc "github.com/zhettick/order-payment-gen/payment/v1/service"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -40,4 +41,21 @@ func (s *Server) GetByID(ctx context.Context, req *svc.GetByIDRequest) (*svc.Get
 	}
 
 	return &svc.GetByIDResponse{Payment: toProto(res)}, nil
+}
+
+func (s *Server) ListPayments(ctx context.Context, req *svc.ListPaymentsRequest) (*svc.ListPaymentsResponse, error) {
+	payments, err := s.uc.ListPayments(req.MinAmount, req.MaxAmount)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+	}
+
+	var result []*base.Payment
+
+	for _, p := range payments {
+		result = append(result, toProto(&p))
+	}
+
+	return &svc.ListPaymentsResponse{
+		Payments: result,
+	}, nil
 }

@@ -78,8 +78,8 @@ github.com/twitchyliquid64/golang-asm v0.15.1 h1:SU5vSMR7hnwNxj24w34ZyCi/FmDZTkS
 github.com/twitchyliquid64/golang-asm v0.15.1/go.mod h1:a1lVb/DtPvCB8fslRZhAngC2+aY1QWCk3Cedj/Gdt08=
 github.com/ugorji/go/codec v1.3.1 h1:waO7eEiFDwidsBN6agj1vJQ4AG7lh2yqXyOXqhgQuyY=
 github.com/ugorji/go/codec v1.3.1/go.mod h1:pRBVtBSKl77K30Bv8R2P+cLSGaTtex6fsA2Wjqmfxj4=
-github.com/zhettick/order-payment-gen v1.0.1 h1:qOmWquZy0shWa75x9OY0/df5039Tr2KexHA4AcvG8P0=
-github.com/zhettick/order-payment-gen v1.0.1/go.mod h1:v9Hjw1LBACZ6iebRkbgASk7TZ3SH25fgO18aK0spj20=
+github.com/zhettick/order-payment-gen v1.1.0 h1:1h/UsjC6MyimeSwVIEFiDUQdaJVuFU8vAZjjlSJxQfg=
+github.com/zhettick/order-payment-gen v1.1.0/go.mod h1:v9Hjw1LBACZ6iebRkbgASk7TZ3SH25fgO18aK0spj20=
 go.mongodb.org/mongo-driver/v2 v2.5.0 h1:yXUhImUjjAInNcpTcAlPHiT7bIXhshCTL3jVBkF3xaE=
 go.mongodb.org/mongo-driver/v2 v2.5.0/go.mod h1:yOI9kBsufol30iFsl1slpdq1I0eHPzybRWdyYUs8K/0=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
