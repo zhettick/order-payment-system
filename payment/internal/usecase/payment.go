@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"errors"
 	"payment/internal/domain/entities"
 	"payment/internal/domain/repository"
 
@@ -35,4 +36,12 @@ func (u *PaymentUseCase) Process(orderID string, amount int64) (*entities.Paymen
 
 func (u *PaymentUseCase) GetByID(orderID string) (*entities.Payment, error) {
 	return u.repo.GetByID(orderID)
+}
+
+func (u *PaymentUseCase) ListPayments(min, max int64) ([]entities.Payment, error) {
+	if min >= 0 && max >= 0 && min > max {
+		return nil, errors.New("min cannot be greater than max")
+	}
+
+	return u.repo.FindByAmountRange(min, max)
 }
