@@ -16,7 +16,7 @@ func NewPaymentUseCase(r repository.PaymentRepository) *PaymentUseCase {
 	return &PaymentUseCase{repo: r}
 }
 
-func (u *PaymentUseCase) Process(orderID string, amount int64) (*entities.Payment, error) {
+func (u *PaymentUseCase) Process(orderID string, amount int64, customerEmail string) (*entities.Payment, error) {
 	status := entities.StatusAuthorized
 	if amount > 100000 {
 		status = entities.StatusDeclined
@@ -26,6 +26,7 @@ func (u *PaymentUseCase) Process(orderID string, amount int64) (*entities.Paymen
 		ID:            uuid.New().String(),
 		OrderID:       orderID,
 		TransactionID: uuid.New().String(),
+		CustomerEmail: customerEmail,
 		Amount:        amount,
 		Status:        status,
 	}

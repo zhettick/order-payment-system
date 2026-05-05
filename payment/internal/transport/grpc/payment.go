@@ -24,7 +24,7 @@ func NewServer(uc *usecase.PaymentUseCase) *Server {
 }
 
 func (s *Server) Create(ctx context.Context, req *svc.CreateRequest) (*svc.CreateResponse, error) {
-	res, err := s.uc.Process(req.OrderId, req.Amount)
+	res, err := s.uc.Process(req.OrderId, req.Amount, req.CustomerEmail)
 
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "payment processing failed: %v", err)

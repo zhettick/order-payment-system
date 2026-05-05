@@ -6,7 +6,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.12.1
-	github.com/zhettick/order-payment-gen v1.1.0
+	github.com/zhettick/order-payment-gen v1.1.2
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 )
