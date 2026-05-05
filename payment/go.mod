@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.12.3
+	github.com/rabbitmq/amqp091-go v1.11.0
 	github.com/zhettick/order-payment-gen v1.1.2
 	google.golang.org/grpc v1.81.0
 )
