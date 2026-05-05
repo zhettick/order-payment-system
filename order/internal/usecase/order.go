@@ -11,7 +11,7 @@ import (
 )
 
 type PaymentGateway interface {
-	Authorize(orderID string, amount int64) (string, error)
+	Authorize(orderID string, amount int64, customerEmail string) (string, error)
 }
 
 type OrderUseCase struct {
@@ -29,25 +29,26 @@ func NewOrderUseCase(r repository.OrderRepository, p PaymentGateway) *OrderUseCa
 	}
 }
 
-func (u *OrderUseCase) Create(customerID, itemName string, amount int64) (*entities.Order, error) {
+func (u *OrderUseCase) Create(customerID, itemName string, customerEmail string, amount int64) (*entities.Order, error) {
 	if amount <= 0 {
 		return nil, errors.New("amount must be > 0")
 	}
 
 	order := &entities.Order{
-		ID:         uuid.New().String(),
-		CustomerID: customerID,
-		ItemName:   itemName,
-		Amount:     amount,
-		Status:     entities.StatusPending,
-		CreatedAt:  time.Now(),
+		ID:            uuid.New().String(),
+		CustomerID:    customerID,
+		ItemName:      itemName,
+		CustomerEmail: customerEmail,
+		Amount:        amount,
+		Status:        entities.StatusPending,
+		CreatedAt:     time.Now(),
 	}
 
 	if err := u.repo.Create(order); err != nil {
 		return nil, err
 	}
 
-	status, err := u.paymentClient.Authorize(order.ID, order.Amount)
+	status, err := u.paymentClient.Authorize(order.ID, order.Amount, order.CustomerEmail)
 	if err != nil {
 		order.Status = entities.StatusFailed
 		if updateErr := u.repo.Update(order); updateErr != nil {

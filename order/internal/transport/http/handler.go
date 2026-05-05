@@ -24,7 +24,7 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	res, err := h.uc.Create(req.CustomerID, req.ItemName, req.Amount)
+	res, err := h.uc.Create(req.CustomerID, req.ItemName, req.CustomerEmail, req.Amount)
 	if err != nil {
 		if err.Error() == "payment service unavailable" {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
@@ -34,12 +34,13 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, OrderResponse{
-		ID:         res.ID,
-		CustomerID: res.CustomerID,
-		ItemName:   res.ItemName,
-		Amount:     res.Amount,
-		Status:     res.Status,
-		CreatedAt:  time.Now(),
+		ID:            res.ID,
+		CustomerID:    res.CustomerID,
+		ItemName:      res.ItemName,
+		CustomerEmail: res.CustomerEmail,
+		Amount:        res.Amount,
+		Status:        res.Status,
+		CreatedAt:     time.Now(),
 	})
 }
 
