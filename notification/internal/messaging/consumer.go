@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"notification/events"
 	"notification/internal/idempotency"
@@ -19,7 +20,7 @@ type Consumer struct {
 }
 
 func NewConsumer(amqpURL string, store *idempotency.Store) (*Consumer, error) {
-	conn, err := amqp.Dial(amqpURL)
+	conn, err := dialWithRetry(amqpURL, 10, 2*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("connect to RabbitMQ: %w", err)
 	}
@@ -47,6 +48,22 @@ func NewConsumer(amqpURL string, store *idempotency.Store) (*Consumer, error) {
 		ch:    ch,
 		store: store,
 	}, nil
+}
+
+func dialWithRetry(amqpURL string, attempts int, delay time.Duration) (*amqp.Connection, error) {
+	var lastErr error
+
+	for i := 1; i <= attempts; i++ {
+		conn, err := amqp.Dial(amqpURL)
+		if err == nil {
+			return conn, nil
+		}
+
+		lastErr = err
+		time.Sleep(delay)
+	}
+
+	return nil, lastErr
 }
 
 func (c *Consumer) Run(ctx context.Context) error {

@@ -22,13 +22,14 @@ func NewPaymentGRPCClient(client svc.PaymentServiceClient) *PaymentGRPCClient {
 	}
 }
 
-func (c *PaymentGRPCClient) Authorize(orderID string, amount int64) (string, error) {
+func (c *PaymentGRPCClient) Authorize(orderID string, amount int64, customerEmail string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	req := &svc.CreateRequest{
-		OrderId: orderID,
-		Amount:  amount,
+		OrderId:       orderID,
+		Amount:        amount,
+		CustomerEmail: customerEmail,
 	}
 
 	resp, err := c.client.Create(ctx, req)

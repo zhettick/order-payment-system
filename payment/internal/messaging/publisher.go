@@ -22,7 +22,7 @@ type RabbitPublisher struct {
 }
 
 func NewRabbitPublisher(amqpURL string) (*RabbitPublisher, error) {
-	conn, err := amqp.Dial(amqpURL)
+	conn, err := dialWithRetry(amqpURL, 10, 2*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("connect to RabbitMQ: %w", err)
 	}
@@ -52,6 +52,22 @@ func NewRabbitPublisher(amqpURL string) (*RabbitPublisher, error) {
 		ch:       ch,
 		confirms: confirms,
 	}, nil
+}
+
+func dialWithRetry(amqpURL string, attempts int, delay time.Duration) (*amqp.Connection, error) {
+	var lastErr error
+
+	for i := 1; i <= attempts; i++ {
+		conn, err := amqp.Dial(amqpURL)
+		if err == nil {
+			return conn, nil
+		}
+
+		lastErr = err
+		time.Sleep(delay)
+	}
+
+	return nil, lastErr
 }
 
 func (p *RabbitPublisher) PublishPaymentCompleted(
