@@ -11,6 +11,7 @@ func toProto(res *entities.Payment) *base.Payment {
 		Id:            res.ID,
 		OrderId:       res.OrderID,
 		TransactionId: res.TransactionID,
+		CustomerEmail: res.CustomerEmail,
 		Amount:        res.Amount,
 		Status:        mapStatus(res.Status),
 	}

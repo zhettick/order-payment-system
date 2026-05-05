@@ -17,20 +17,20 @@ func NewPaymentRepository(db *sql.DB) *PaymentRepository {
 }
 
 func (r *PaymentRepository) Create(p *entities.Payment) error {
-	query := `INSERT INTO payments (id, order_id, transaction_id, amount, status) VALUES ($1, $2, $3, $4, $5)`
-	_, err := r.db.Exec(query, p.ID, p.OrderID, p.TransactionID, p.Amount, p.Status)
+	query := `INSERT INTO payments (id, order_id, transaction_id, customer_email, amount, status) VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err := r.db.Exec(query, p.ID, p.OrderID, p.TransactionID, p.CustomerEmail, p.Amount, p.Status)
 	return err
 }
 
 func (r *PaymentRepository) GetByID(orderID string) (*entities.Payment, error) {
 	p := &entities.Payment{}
-	query := `SELECT id, order_id, transaction_id, amount, status FROM payments WHERE order_id = $1`
-	err := r.db.QueryRow(query, orderID).Scan(&p.ID, &p.OrderID, &p.TransactionID, &p.Amount, &p.Status)
+	query := `SELECT id, order_id, transaction_id, customer_email, amount, status FROM payments WHERE order_id = $1`
+	err := r.db.QueryRow(query, orderID).Scan(&p.ID, &p.OrderID, &p.TransactionID, &p.CustomerEmail, &p.Amount, &p.Status)
 	return p, err
 }
 
 func (r *PaymentRepository) FindByAmountRange(min, max int64) ([]entities.Payment, error) {
-	query := `SELECT id, order_id, transaction_id, amount, status FROM payments WHERE 1=1`
+	query := `SELECT id, order_id, transaction_id, customer_email, amount, status FROM payments WHERE 1=1`
 	var args []interface{}
 
 	if min > 0 {
@@ -52,7 +52,7 @@ func (r *PaymentRepository) FindByAmountRange(min, max int64) ([]entities.Paymen
 	var payments []entities.Payment
 	for rows.Next() {
 		var p entities.Payment
-		if err := rows.Scan(&p.ID, &p.OrderID, &p.TransactionID, &p.Amount, &p.Status); err != nil {
+		if err := rows.Scan(&p.ID, &p.OrderID, &p.TransactionID, &p.CustomerEmail, &p.Amount, &p.Status); err != nil {
 			return nil, err
 		}
 		payments = append(payments, p)
