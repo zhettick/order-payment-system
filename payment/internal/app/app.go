@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"payment/internal/messaging"
 	"payment/internal/repository/postgres"
 	grpcserver "payment/internal/transport/grpc"
 	"payment/internal/usecase"
@@ -21,12 +22,16 @@ import (
 func Run() {
 	dbURL := os.Getenv("PAYMENT_DB_URL")
 	grpcPort := os.Getenv("PAYMENT_GRPC_PORT")
+	rabbitURL := os.Getenv("RABBITMQ_URL")
 
 	if dbURL == "" {
 		log.Fatal("PAYMENT_DB_URL is required")
 	}
 	if grpcPort == "" {
 		log.Fatal("PAYMENT_GRPC_PORT is required")
+	}
+	if rabbitURL == "" {
+		log.Fatal("RABBITMQ_URL is required")
 	}
 
 	db, err := sql.Open("postgres", dbURL)
@@ -35,8 +40,14 @@ func Run() {
 	}
 	defer db.Close()
 
+	publisher, err := messaging.NewRabbitPublisher(rabbitURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
+	}
+	defer publisher.Close()
+
 	paymentRepo := postgres.NewPaymentRepository(db)
-	paymentUC := usecase.NewPaymentUseCase(paymentRepo)
+	paymentUC := usecase.NewPaymentUseCase(paymentRepo, publisher)
 
 	lis, err := net.Listen("tcp", ":"+grpcPort)
 	if err != nil {
