@@ -224,3 +224,160 @@ UPDATE orders SET status = 'Cancelled' WHERE id = '<order_id>';
 ```
 ![subscribe.png](screenshots/subscribe.png)
 ---
+
+### Event-Driven Notifications
+
+```text
+Order Service -> gRPC -> Payment Service -> RabbitMQ -> Notification Service
+```
+![notificationDiagram.png](screenshots/notificationDiagram.png)
+
+Payment Service is the producer. After a successful payment is saved, it publishes a `PaymentCompletedEvent` to RabbitMQ.
+
+Notification Service is the consumer. It listens to the durable `payment.completed` queue and simulates sending an email by logging:
+```text
+[Notification] Sent email to user@example.com for Order #order-id. Amount: order-amount![notificationLog.png](screenshots/notificationLog.png)
+```
+![notificationLog.png](screenshots/notificationLog.png)
+
+---
+
+#### Payment Service
+- Works as RabbitMQ producer
+- Publishes `PaymentCompletedEvent`
+- Publishes only after payment is successfully saved
+- Uses persistent messages
+- Uses publisher confirms
+
+#### Notification Service
+- Works as RabbitMQ consumer
+- Listens to `payment.completed` queue
+- Does not call Order Service or Payment Service directly
+- Uses manual ACK
+- Implements idempotency using `event_id`
+
+#### RabbitMQ
+- Stores payment events
+- Delivers events to Notification Service
+- Keeps messages if Notification Service is offline
+
+---
+
+## Event Payload
+
+The event is encoded as JSON.
+
+```json
+{
+  "event_id": "uuid-value",
+  "order_id": "order-id",
+  "amount": 9999,
+  "customer_email": "user@example.com",
+  "status": "Authorized",
+  "occurred_at": "2026-05-05T10:24:41Z"
+}
+```
+
+---
+
+## Idempotency
+
+Each event has a unique `event_id`.
+
+Notification Service stores processed event IDs in memory.
+
+If the same message is delivered twice:
+
+- the duplicate is detected
+- the notification log is not printed again
+- the message is ACKed
+
+---
+
+## How to Run
+
+```bash
+docker compose up --build
+```
+
+RabbitMQ UI:
+
+```text
+http://localhost:15672
+guest / guest
+```
+
+---
+
+## Testing
+
+### Create Order
+
+```http
+POST http://localhost:8080/orders
+```
+
+```json
+{
+  "customer_id": "user_123",
+  "item_name": "Phone",
+  "customer_email": "user@example.com",
+  "amount": 9999
+}
+```
+
+Expected result:
+
+```text
+201 Created
+```
+
+Expected Notification Service log:
+
+```text
+[Notification] Sent email to user@example.com for Order #order-id. Amount: $9999
+```
+
+---
+
+## Reliability Demo
+
+Stop Notification Service:
+
+```bash
+docker compose stop notification-service
+```
+
+Create another order.
+
+Check RabbitMQ queue:
+
+```bash
+docker compose exec rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers
+```
+
+Expected result:
+
+```text
+payment.completed    1    0    0
+```
+
+Start Notification Service again:
+
+```bash
+docker compose start notification-service
+```
+
+The message is consumed, logged, and ACKed.
+
+After successful processing:
+
+```text
+payment.completed    0    0    1
+```
+
+Check notification-service logs:
+
+```bash
+ docker compose logs notification-service           
+```
