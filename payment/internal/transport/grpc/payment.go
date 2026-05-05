@@ -46,7 +46,7 @@ func (s *Server) GetByID(ctx context.Context, req *svc.GetByIDRequest) (*svc.Get
 func (s *Server) ListPayments(ctx context.Context, req *svc.ListPaymentsRequest) (*svc.ListPaymentsResponse, error) {
 	payments, err := s.uc.ListPayments(req.MinAmount, req.MaxAmount)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	var result []*base.Payment
