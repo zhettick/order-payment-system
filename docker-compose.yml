@@ -66,5 +66,15 @@ services:
       - order-db
       - payment-service
 
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification/Dockerfile
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
 volumes:
   rabbitmq_data:
