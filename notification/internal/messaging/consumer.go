@@ -9,17 +9,28 @@ import (
 
 	"notification/events"
 	"notification/internal/idempotency"
+	"notification/internal/provider"
+	"notification/internal/retry"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type Consumer struct {
-	conn  *amqp.Connection
-	ch    *amqp.Channel
-	store *idempotency.Store
+	conn        *amqp.Connection
+	ch          *amqp.Channel
+	store       *idempotency.RedisStore
+	emailSender provider.EmailSender
+	maxRetries  int
+	baseBackoff time.Duration
 }
 
-func NewConsumer(amqpURL string, store *idempotency.Store) (*Consumer, error) {
+func NewConsumer(
+	amqpURL string,
+	store *idempotency.RedisStore,
+	emailSender provider.EmailSender,
+	maxRetries int,
+	baseBackoff time.Duration,
+) (*Consumer, error) {
 	conn, err := dialWithRetry(amqpURL, 10, 2*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("connect to RabbitMQ: %w", err)
@@ -44,9 +55,12 @@ func NewConsumer(amqpURL string, store *idempotency.Store) (*Consumer, error) {
 	}
 
 	return &Consumer{
-		conn:  conn,
-		ch:    ch,
-		store: store,
+		conn:        conn,
+		ch:          ch,
+		store:       store,
+		emailSender: emailSender,
+		maxRetries:  maxRetries,
+		baseBackoff: baseBackoff,
 	}, nil
 }
 
@@ -93,12 +107,12 @@ func (c *Consumer) Run(ctx context.Context) error {
 				return nil
 			}
 
-			c.handleDelivery(delivery)
+			c.handleDelivery(ctx, delivery)
 		}
 	}
 }
 
-func (c *Consumer) handleDelivery(delivery amqp.Delivery) {
+func (c *Consumer) handleDelivery(ctx context.Context, delivery amqp.Delivery) {
 	var event events.PaymentCompletedEvent
 
 	if err := json.Unmarshal(delivery.Body, &event); err != nil {
@@ -113,18 +127,44 @@ func (c *Consumer) handleDelivery(delivery amqp.Delivery) {
 		return
 	}
 
-	if !c.store.TryMarkProcessed(event.EventID) {
+	processed, err := c.store.IsProcessed(ctx, event.EventID)
+	if err != nil {
+		log.Printf("[Notification] Failed to check idempotency, will retry later: %v", err)
+		_ = delivery.Nack(false, true)
+		return
+	}
+
+	if processed {
 		log.Printf("[Notification] Duplicate event skipped: %s", event.EventID)
 		_ = delivery.Ack(false)
 		return
 	}
 
-	log.Printf(
-		"[Notification] Sent email to %s for Order #%s. Amount: $%d",
-		event.CustomerEmail,
-		event.OrderID,
-		event.Amount,
-	)
+	message := provider.EmailMessage{
+		EventID: event.EventID,
+		To:      event.CustomerEmail,
+		OrderID: event.OrderID,
+		Amount:  event.Amount,
+		Status:  event.Status,
+	}
+
+	err = retry.Do(ctx, c.maxRetries, c.baseBackoff, func() error {
+		sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+
+		return c.emailSender.Send(sendCtx, message)
+	})
+	if err != nil {
+		log.Printf("[Notification] Provider failed after retries, moved to DLQ: %v", err)
+		_ = delivery.Nack(false, false)
+		return
+	}
+
+	if err := c.store.MarkProcessed(ctx, event.EventID); err != nil {
+		log.Printf("[Notification] Email sent but failed to mark processed: %v", err)
+		_ = delivery.Nack(false, true)
+		return
+	}
 
 	_ = delivery.Ack(false)
 }
