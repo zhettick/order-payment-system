@@ -34,6 +34,12 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: ap2_redis
+    ports:
+      - "6379:6379"
+
   payment-service:
     build:
       context: .
@@ -62,9 +68,15 @@ services:
       - ORDER_HTTP_PORT=8080
       - ORDER_GRPC_PORT=${ORDER_GRPC_PORT}
       - PAYMENT_SERVICE_ADDR=payment-service:50051
+      - REDIS_ADDR=redis:6379
+      - ORDER_CACHE_TTL=5m
     depends_on:
-      - order-db
-      - payment-service
+      order-db:
+        condition: service_started
+      payment-service:
+        condition: service_started
+      redis:
+        condition: service_started
 
   notification-service:
     build:
@@ -72,9 +84,16 @@ services:
       dockerfile: notification/Dockerfile
     environment:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - REDIS_ADDR=redis:6379
+      - PROVIDER_MODE=SIMULATED
+      - NOTIFICATION_MAX_RETRIES=3
+      - NOTIFICATION_BASE_BACKOFF=2s
     depends_on:
       rabbitmq:
         condition: service_healthy
+      redis:
+        condition: service_started
+
 
 volumes:
   rabbitmq_data:
