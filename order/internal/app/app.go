@@ -1,11 +1,14 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net"
 	"os"
+	"time"
 
+	orderredis "order/internal/cache/redis"
 	"order/internal/repository/postgres"
 	ordergrpc "order/internal/transport/grpc"
 	grpcclient "order/internal/transport/grpc/client"
@@ -14,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
+	goredis "github.com/redis/go-redis/v9"
 	svc "github.com/zhettick/order-payment-gen/order/v1/service"
 	paymentSvc "github.com/zhettick/order-payment-gen/payment/v1/service"
 	"google.golang.org/grpc"
@@ -26,6 +30,8 @@ func Run() {
 	httpPort := os.Getenv("ORDER_HTTP_PORT")
 	grpcPort := os.Getenv("ORDER_GRPC_PORT")
 	paymentAddr := os.Getenv("PAYMENT_SERVICE_ADDR")
+	redisAddr := os.Getenv("REDIS_ADDR")
+	cacheTTLRaw := os.Getenv("ORDER_CACHE_TTL")
 
 	if dbURL == "" {
 		log.Fatal("ORDER_DB_URL is required")
@@ -40,11 +46,38 @@ func Run() {
 		log.Fatal("PAYMENT_SERVICE_ADDR is required")
 	}
 
+	if redisAddr == "" {
+		redisAddr = "redis:6379"
+	}
+
+	if cacheTTLRaw == "" {
+		cacheTTLRaw = "5m"
+	}
+
+	cacheTTL, err := time.ParseDuration(cacheTTLRaw)
+	if err != nil {
+		log.Fatalf("Invalid ORDER_CACHE_TTL: %v", err)
+	}
+
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
+
+	redisClient := goredis.NewClient(&goredis.Options{
+		Addr: redisAddr,
+	})
+	defer redisClient.Close()
+
+	redisCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if err := redisClient.Ping(redisCtx).Err(); err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
+
+	orderCache := orderredis.NewOrderCache(redisClient, cacheTTL)
 
 	conn, err := grpc.Dial(paymentAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -56,7 +89,7 @@ func Run() {
 	paymentClient := grpcclient.NewPaymentGRPCClient(paymentGRPC)
 
 	orderRepo := postgres.NewOrderRepository(db)
-	orderUC := usecase.NewOrderUseCase(orderRepo, paymentClient)
+	orderUC := usecase.NewOrderUseCase(orderRepo, paymentClient, orderCache)
 
 	go func() {
 		lis, err := net.Listen("tcp", ":"+grpcPort)

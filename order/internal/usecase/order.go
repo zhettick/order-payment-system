@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"errors"
 	"order/internal/domain/entities"
 	"order/internal/domain/repository"
@@ -17,14 +18,20 @@ type PaymentGateway interface {
 type OrderUseCase struct {
 	repo          repository.OrderRepository
 	paymentClient PaymentGateway
+	cache         repository.OrderCache
 	subscribers   map[string][]chan string
 	mu            sync.RWMutex
 }
 
-func NewOrderUseCase(r repository.OrderRepository, p PaymentGateway) *OrderUseCase {
+func NewOrderUseCase(
+	r repository.OrderRepository,
+	p PaymentGateway,
+	cache repository.OrderCache,
+) *OrderUseCase {
 	return &OrderUseCase{
 		repo:          r,
 		paymentClient: p,
+		cache:         cache,
 		subscribers:   make(map[string][]chan string),
 	}
 }
@@ -51,10 +58,14 @@ func (u *OrderUseCase) Create(customerID, itemName string, customerEmail string,
 	status, err := u.paymentClient.Authorize(order.ID, order.Amount, order.CustomerEmail)
 	if err != nil {
 		order.Status = entities.StatusFailed
+
 		if updateErr := u.repo.Update(order); updateErr != nil {
 			return nil, updateErr
 		}
+
+		u.invalidateCache(order.ID)
 		u.notifySubscribers(order.ID, order.Status)
+
 		return nil, errors.New("payment service unavailable")
 	}
 
@@ -68,13 +79,33 @@ func (u *OrderUseCase) Create(customerID, itemName string, customerEmail string,
 		return nil, err
 	}
 
+	u.invalidateCache(order.ID)
 	u.notifySubscribers(order.ID, order.Status)
 
 	return order, nil
 }
 
 func (u *OrderUseCase) GetByID(id string) (*entities.Order, error) {
-	return u.repo.GetByID(id)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if u.cache != nil {
+		cachedOrder, err := u.cache.Get(ctx, id)
+		if err == nil && cachedOrder != nil {
+			return cachedOrder, nil
+		}
+	}
+
+	order, err := u.repo.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if u.cache != nil {
+		_ = u.cache.Set(ctx, order)
+	}
+
+	return order, nil
 }
 
 func (u *OrderUseCase) Cancel(id string) error {
@@ -93,7 +124,9 @@ func (u *OrderUseCase) Cancel(id string) error {
 		return err
 	}
 
+	u.invalidateCache(order.ID)
 	u.notifySubscribers(id, order.Status)
+
 	return nil
 }
 
@@ -143,4 +176,15 @@ func (u *OrderUseCase) notifySubscribers(orderID string, status string) {
 		default:
 		}
 	}
+}
+
+func (u *OrderUseCase) invalidateCache(orderID string) {
+	if u.cache == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	_ = u.cache.Delete(ctx, orderID)
 }
